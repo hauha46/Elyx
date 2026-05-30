@@ -1,8 +1,17 @@
 # Elyx Resource Allocator
 
-A simple Next.js implementation of Elyx's HealthSpan AI Resource Allocator. Transforms a prioritised health action plan + 3-month resource availability into a personalised weekly calendar using priority-based greedy scheduling with backup substitution and skip-with-adjustment fallback.
+A Next.js implementation of Elyx's HealthSpan AI Resource Allocator. Transforms a prioritised health action plan + 3-month resource availability into a personalised weekly calendar using priority-based greedy scheduling with backup substitution and skip-with-adjustment fallback.
 
 See [`task.md`](task.md) for the original brief.
+
+## Features
+
+- Pre-loaded sample plans (Mei Lin Chen, Bao Nguyen) plus drag-and-drop JSON upload for custom data
+- In-app schema reference with downloadable sample templates
+- Weekly calendar grid + per-day detail sheet
+- Right-side sheets surfacing skipped and substituted activities with their adjustments
+- Calendar export to `.ics` (compatible with Google Calendar, Apple Calendar, Outlook)
+- Deterministic, fully-tested scheduler (35 unit + integration tests)
 
 ## Tech Stack
 
@@ -11,29 +20,42 @@ See [`task.md`](task.md) for the original brief.
 - **Zod 4** for input validation
 - **date-fns** for date arithmetic
 - **Vitest** + **Testing Library** for tests
-- **Vercel** for hosting
 
-## Architecture
+## Getting Started
+
+```bash
+pnpm install
+pnpm dev          # http://localhost:3000
+```
+
+## Project Structure
 
 ```
 app/
-  page.tsx                  Main UI (sample picker, upload, calendar)
+  page.tsx                  Main UI (sample picker, upload, calendar, export)
   actions/schedule.ts       Server action wrapping the scheduler
+  layout.tsx                Root layout + TooltipProvider
 components/
-  ui/                       shadcn components (Button, Card, Select, Sheet…)
+  ui/                       shadcn primitives (Button, Card, Dialog, Sheet, Tooltip…)
+  sample-picker.tsx         Dropdown of pre-loaded personas
+  upload-panel.tsx          Two-zone upload dialog
+  upload-zone.tsx           Reusable drag-and-drop file zone
+  schema-help-dialog.tsx    Schema reference + sample downloads
   weekly-calendar.tsx       CSS-grid week view
   day-detail-sheet.tsx      Side panel listing a day's events
-  sample-picker.tsx
-  upload-panel.tsx
-  summary-bar.tsx
+  failures-sheet.tsx        Side panel for skipped / substituted events
+  summary-bar.tsx           Clickable count badges
+  empty-state.tsx           Pre-generate hero card
 lib/
   scheduler/                Pure scheduler: (plan, avail, range) → schedule
     types.ts
-    schemas.ts              zod validation
-    instances.ts            frequency → target dates
-    slot-finder.ts          find available slot for activity
-    scheduler.ts            priority-based greedy algorithm
-  sample-data/              Pre-loaded Mei Lin Chen + Bao Nguyen data
+    schemas.ts              Zod validation
+    instances.ts            Frequency → target dates
+    slot-finder.ts          Find available slot for activity
+    scheduler.ts            Priority-based greedy algorithm
+    index.ts                Public barrel
+  ics.ts                    Schedule → .ics text
+  sample-data/              Pre-loaded Mei Lin Chen + Bao Nguyen JSON
 __tests__/                  Unit + integration tests
 scripts/
   gen-availability.mjs      Recurring window generator
@@ -53,14 +75,7 @@ The scheduler is a **pure function** — no I/O, deterministic, fully testable.
    - If still nothing, record as skipped with the adjustment note.
 4. Same input → same output. No randomness.
 
-## Local Dev
-
-```bash
-pnpm install
-pnpm dev          # http://localhost:3000
-```
-
-## Tests
+## Testing
 
 ```bash
 pnpm test         # unit + integration
@@ -68,24 +83,8 @@ pnpm typecheck    # tsc --noEmit
 pnpm build        # production build
 ```
 
-- **31 tests** cover frequency expansion, slot finding, scheduler priority/backup/travel logic, zod schemas, server action, sample data validation, no-double-booking, and the 100+ combined events requirement.
-
-## Deployment to Vercel
-
-1. Push this repo to GitHub.
-2. In the Vercel dashboard, **New Project** → import the repo → accept defaults → **Deploy**.
-3. No environment variables required.
-
-Or via CLI:
-
-```bash
-pnpm dlx vercel --prod
-```
+**35 tests** cover frequency expansion, slot finding, scheduler priority/backup/travel logic, zod schemas, server action, `.ics` generation, sample data validation, no-double-booking, and the 100+ combined events requirement.
 
 ## Sample Data
 
 Two pre-loaded personas (Mei Lin Chen — East Asian, cardio focus; Bao Nguyen — Southeast Asian, strength focus). Together they exceed 100 scheduled instances over 12 weeks (2026-06-01 to 2026-08-23). Each persona has 17 activities and 6-7 resources (trainer / specialist / allied-health / equipment) plus a travel block. Authored manually in [`lib/sample-data/`](lib/sample-data/); availability windows generated by [`scripts/gen-availability.mjs`](scripts/gen-availability.mjs).
-
-## Prompts Used
-
-This project was built collaboratively with Claude. The conversation began with brainstorming the task scope, choosing the scheduling algorithm (priority-based greedy with backups), UI format (weekly grid + day detail sheet), and tech stack (Next.js + Tailwind + shadcn). A detailed implementation plan was then written and executed task-by-task using TDD: failing test → minimal implementation → green test → commit.
