@@ -6,17 +6,11 @@ import type {
   Activity,
   Travel,
 } from "./types";
-import { expandFrequency, type DateRange } from "./instances";
+import { expandFrequencyWithDayParts, type DateRange } from "./instances";
 import { findSlot, type ConsumedSlot } from "./slot-finder";
 
 function isInTravel(date: string, travel: Travel[]): Travel | null {
   return travel.find((t) => date >= t.start && date <= t.end) ?? null;
-}
-
-function addDur(start: string, dur: number): string {
-  const [h, m] = start.split(":").map(Number);
-  const total = h * 60 + m + dur;
-  return `${String(Math.floor(total / 60)).padStart(2, "0")}:${String(total % 60).padStart(2, "0")}`;
 }
 
 function tryPlaceActivity(
@@ -27,36 +21,39 @@ function tryPlaceActivity(
   travel: Travel[]
 ): ScheduledEvent | null {
   const trip = isInTravel(date, travel);
+  let note: string | undefined;
+  // What we actually place: during travel, an on-site facilitator/equipment
+  // can't be used, so we place against the member's day only.
+  let target = activity;
+
   if (trip) {
-    if (activity.remoteEligible && trip.remoteOk) {
-      return {
-        activityId: activity.id,
-        date,
-        start: "09:00",
-        end: addDur("09:00", activity.durationMinutes),
-        facilitatorId: null,
-        status: "scheduled",
-        notes: `Remote during ${trip.location}`,
-      };
+    const selfAdministered = !activity.facilitatorId && !activity.equipmentId;
+    if (selfAdministered) {
+      note = `During ${trip.location}`;
+    } else if (activity.remoteEligible && trip.remoteOk) {
+      note = `Remote during ${trip.location}`;
+      target = { ...activity, facilitatorId: null, equipmentId: null };
+    } else {
+      return null; // facility-bound and can't be done remotely → skip
     }
-    return null;
   }
 
-  const slot = findSlot(activity, date, resources, consumed);
+  const slot = findSlot(target, date, resources, consumed);
   if (!slot) return null;
 
-  if (activity.facilitatorId)
-    consumed.push({ resourceId: activity.facilitatorId, date, ...slot });
-  if (activity.equipmentId)
-    consumed.push({ resourceId: activity.equipmentId, date, ...slot });
+  if (target.facilitatorId)
+    consumed.push({ resourceId: target.facilitatorId, date, ...slot });
+  if (target.equipmentId)
+    consumed.push({ resourceId: target.equipmentId, date, ...slot });
   consumed.push({ resourceId: "__member__", date, ...slot });
 
   return {
     activityId: activity.id,
     date,
     ...slot,
-    facilitatorId: activity.facilitatorId,
+    facilitatorId: target.facilitatorId,
     status: "scheduled",
+    ...(note ? { notes: note } : {}),
   };
 }
 
@@ -71,10 +68,15 @@ export function schedule(
   const events: ScheduledEvent[] = [];
 
   for (const activity of sorted) {
-    const dates = expandFrequency(activity, range);
-    for (const date of dates) {
+    const occurrences = expandFrequencyWithDayParts(activity, range);
+    for (const { date, preferredTimeOfDay } of occurrences) {
+      // A multi-dose day tags each occurrence with its own band; otherwise the
+      // activity keeps whatever band it declared.
+      const target = preferredTimeOfDay
+        ? { ...activity, preferredTimeOfDay }
+        : activity;
       const placed = tryPlaceActivity(
-        activity,
+        target,
         date,
         availability.resources,
         consumed,

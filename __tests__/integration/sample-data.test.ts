@@ -37,6 +37,25 @@ describe("sample data", () => {
     });
   }
 
+  for (const sample of SAMPLES) {
+    it(`${sample.key}: no two member events overlap on the same day`, () => {
+      const out = schedule(sample.plan, sample.availability, RANGE);
+      const byDate = new Map<string, { start: string; end: string }[]>();
+      for (const e of out.events) {
+        if (e.status === "skipped") continue;
+        const arr = byDate.get(e.date) ?? [];
+        arr.push({ start: e.start, end: e.end });
+        byDate.set(e.date, arr);
+      }
+      for (const [, slots] of byDate) {
+        slots.sort((a, b) => a.start.localeCompare(b.start));
+        for (let i = 1; i < slots.length; i++) {
+          expect(slots[i].start >= slots[i - 1].end).toBe(true);
+        }
+      }
+    });
+  }
+
   it("combined samples produce >= 100 events", () => {
     const total = SAMPLES.reduce(
       (sum, s) =>
