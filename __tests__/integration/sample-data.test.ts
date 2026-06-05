@@ -56,6 +56,31 @@ describe("sample data", () => {
     });
   }
 
+  for (const sample of SAMPLES) {
+    it(`${sample.key}: meals land in a believable time-of-day band`, () => {
+      const out = schedule(sample.plan, sample.availability, RANGE);
+      const band = new Map(
+        sample.plan.activities
+          .filter((a) => a.preferredTimeOfDay)
+          .map((a) => [a.id, a.preferredTimeOfDay])
+      );
+      const scheduledMeals = out.events.filter(
+        (e) =>
+          e.status === "scheduled" &&
+          (e.activityId.includes("breakfast") ||
+            e.activityId.includes("lunch") ||
+            e.activityId.includes("dinner"))
+      );
+      expect(scheduledMeals.length).toBeGreaterThan(0);
+      for (const e of scheduledMeals) {
+        const b = band.get(e.activityId);
+        if (b === "morning") expect(e.start >= "05:00" && e.start < "12:00").toBe(true);
+        if (b === "afternoon") expect(e.start >= "12:00" && e.start < "17:00").toBe(true);
+        if (b === "evening") expect(e.start >= "17:00" && e.start < "22:00").toBe(true);
+      }
+    });
+  }
+
   it("combined samples produce >= 100 events", () => {
     const total = SAMPLES.reduce(
       (sum, s) =>

@@ -159,7 +159,8 @@
       "prepNotes": "Mat + bands",
       "backupActivityIds": [],
       "adjustmentIfSkipped": "Add 5min mobility to next session",
-      "metrics": ["duration_min", "rom_score"]
+      "metrics": ["duration_min", "rom_score"],
+      "preferredTimeOfDay": "morning"
     },
     {
       "id": "bn-cycling",
