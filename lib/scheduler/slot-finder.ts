@@ -1,4 +1,4 @@
-import type { Activity, Resource } from "./types";
+import type { Activity, ActivityType, Resource, TimeOfDay } from "./types";
 
 export type ConsumedSlot = {
   resourceId: string;
@@ -21,6 +21,57 @@ const timeOfDayBounds: Record<string, [number, number]> = {
   afternoon: [12 * 60, 17 * 60],
   evening: [17 * 60, 22 * 60],
 };
+
+// A believable target time *inside* each band — so events land mid-band
+// (breakfast ~07:30, lunch ~12:30, dinner ~18:30) instead of at the band floor.
+const timeOfDayAnchors: Record<TimeOfDay, number> = {
+  morning: 7 * 60 + 30,
+  afternoon: 12 * 60 + 30,
+  evening: 18 * 60 + 30,
+};
+
+// Fallback anchor by type when an activity has no explicit preferredTimeOfDay.
+// `null` keeps the legacy earliest-fit behavior (meals/fitness carry their own
+// band in the data; consultations snap to the facilitator's window).
+const typeAnchors: Record<ActivityType, number | null> = {
+  fitness: null,
+  food: null,
+  medication: 7 * 60 + 30,
+  therapy: 18 * 60 + 30,
+  consultation: null,
+};
+
+function anchorMinute(activity: Activity): number | null {
+  if (activity.preferredTimeOfDay)
+    return timeOfDayAnchors[activity.preferredTimeOfDay];
+  return typeAnchors[activity.type];
+}
+
+// Place `dur` minutes within the free `space`. With no anchor, take the earliest
+// fit. With an anchor, prefer the earliest slot at-or-after it; if none fits,
+// fall back to the slot nearest before it (latest possible start).
+function placeInSpace(
+  space: Interval[],
+  dur: number,
+  anchor: number | null
+): Slot | null {
+  if (anchor === null) {
+    const fit = space.find((c) => c.endMin - c.startMin >= dur);
+    return fit
+      ? { start: fromMin(fit.startMin), end: fromMin(fit.startMin + dur) }
+      : null;
+  }
+  for (const c of space) {
+    const s = Math.max(c.startMin, anchor);
+    if (s + dur <= c.endMin) return { start: fromMin(s), end: fromMin(s + dur) };
+  }
+  for (let i = space.length - 1; i >= 0; i--) {
+    const c = space[i];
+    if (c.endMin - c.startMin >= dur)
+      return { start: fromMin(c.endMin - dur), end: fromMin(c.endMin) };
+  }
+  return null;
+}
 
 function resourceFreeIntervals(
   resource: Resource,
@@ -99,16 +150,14 @@ export function findSlot(
   for (let i = 1; i < intervals.length; i++)
     candidates = intersect(candidates, intervals[i]);
 
+  // A set preferredTimeOfDay is a hard band (when it has room); otherwise the
+  // whole day is fair game and the anchor (if any) just biases placement.
+  let searchSpace = candidates;
   if (activity.preferredTimeOfDay) {
     const [lo, hi] = timeOfDayBounds[activity.preferredTimeOfDay];
-    const preferred = intersect(candidates, [{ startMin: lo, endMin: hi }]);
-    const fit = preferred.find((c) => c.endMin - c.startMin >= dur);
-    if (fit)
-      return { start: fromMin(fit.startMin), end: fromMin(fit.startMin + dur) };
+    const pool = intersect(candidates, [{ startMin: lo, endMin: hi }]);
+    if (pool.length) searchSpace = pool;
   }
 
-  const fit = candidates.find((c) => c.endMin - c.startMin >= dur);
-  return fit
-    ? { start: fromMin(fit.startMin), end: fromMin(fit.startMin + dur) }
-    : null;
+  return placeInSpace(searchSpace, dur, anchorMinute(activity));
 }

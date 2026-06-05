@@ -106,7 +106,18 @@ const meiLinAvailability = {
       id: "eq-gym-home",
       type: "equipment",
       name: "Home gym",
-      windows: buildWindows(dates, () => [{ start: "05:00", end: "22:00" }]),
+      // Used mornings before work and evenings after — not all day.
+      windows: buildWindows(dates, (d) =>
+        d === 0 || d === 6
+          ? [
+              { start: "07:00", end: "12:00" },
+              { start: "16:00", end: "21:00" },
+            ]
+          : [
+              { start: "06:00", end: "09:00" },
+              { start: "16:00", end: "22:00" },
+            ]
+      ),
     },
   ],
   travel: [
@@ -176,7 +187,18 @@ const baoAvailability = {
       id: "eq-gym-home",
       type: "equipment",
       name: "Home gym",
-      windows: buildWindows(dates, () => [{ start: "05:00", end: "22:00" }]),
+      // Used mornings before work and evenings after — not all day.
+      windows: buildWindows(dates, (d) =>
+        d === 0 || d === 6
+          ? [
+              { start: "07:00", end: "12:00" },
+              { start: "16:00", end: "21:00" },
+            ]
+          : [
+              { start: "06:00", end: "09:00" },
+              { start: "16:00", end: "22:00" },
+            ]
+      ),
     },
   ],
   travel: [

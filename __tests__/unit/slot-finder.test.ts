@@ -48,7 +48,33 @@ describe("findSlot", () => {
       ],
     };
     const r = findSlot(evening, "2026-06-01", [eveningWin], []);
-    expect(r?.start).toBe("18:00");
+    expect(r?.start).toBe("18:30");
+  });
+
+  it("anchors a banded morning activity near 07:30, not the window floor", () => {
+    const selfCare: Activity = {
+      ...act,
+      facilitatorId: null,
+      equipmentId: null,
+      preferredTimeOfDay: "morning",
+    };
+    const r = findSlot(selfCare, "2026-06-01", [], []);
+    expect(r).toEqual({ start: "07:30", end: "08:00" });
+  });
+
+  it("falls back to the slot nearest before the anchor when the band tail is consumed", () => {
+    const selfCare: Activity = {
+      ...act,
+      facilitatorId: null,
+      equipmentId: null,
+      preferredTimeOfDay: "morning",
+    };
+    // Member busy 07:00 onward → only 05:00-07:00 is free in the morning band.
+    const consumed = [
+      { resourceId: "__member__", date: "2026-06-01", start: "07:00", end: "22:00" },
+    ];
+    const r = findSlot(selfCare, "2026-06-01", [], consumed);
+    expect(r).toEqual({ start: "06:30", end: "07:00" });
   });
 
   it("skips already-consumed slots", () => {

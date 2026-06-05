@@ -74,6 +74,37 @@ describe("schedule", () => {
     expect(out.events[0].adjustmentApplied).toBe("note");
   });
 
+  it("keeps self-administered activities during non-remote travel", () => {
+    const vitamin: Activity = {
+      ...baseActivity,
+      id: "vit",
+      type: "medication",
+      name: "Vitamin D",
+      facilitatorId: null,
+      equipmentId: null,
+      remoteEligible: false,
+      frequency: { times: 1, per: "day" },
+    };
+    const travelAvail: Availability = {
+      resources: [],
+      travel: [
+        {
+          start: "2026-06-01",
+          end: "2026-06-10",
+          location: "Hanoi",
+          remoteOk: false,
+        },
+      ],
+    };
+    const out = schedule(
+      { memberId: "m", memberName: "M", activities: [vitamin] },
+      travelAvail,
+      { start: "2026-06-01", end: "2026-06-03" }
+    );
+    expect(out.events.every((e) => e.status === "scheduled")).toBe(true);
+    expect(out.events[0].notes).toContain("Hanoi");
+  });
+
   it("schedules remotely when trip allows remote AND activity is remote-eligible", () => {
     const remoteActivity: Activity = { ...baseActivity, remoteEligible: true };
     const remoteAvail: Availability = {
@@ -94,6 +125,30 @@ describe("schedule", () => {
     );
     expect(out.events.every((e) => e.status === "scheduled")).toBe(true);
     expect(out.events[0].notes).toContain("Berlin");
+  });
+
+  it("splits a 2x/day medication across morning and evening", () => {
+    const med: Activity = {
+      ...baseActivity,
+      id: "med",
+      type: "medication",
+      name: "Berberine",
+      facilitatorId: null,
+      equipmentId: null,
+      frequency: { times: 2, per: "day" },
+    };
+    const out = schedule(
+      { memberId: "m", memberName: "M", activities: [med] },
+      { resources: [], travel: [] },
+      { start: "2026-06-01", end: "2026-06-01" }
+    );
+    const starts = out.events
+      .filter((e) => e.status === "scheduled")
+      .map((e) => e.start)
+      .sort();
+    expect(starts).toHaveLength(2);
+    expect(starts[0] < "12:00").toBe(true);
+    expect(starts[1] >= "17:00").toBe(true);
   });
 
   it("uses backup activity when primary cannot fit", () => {
@@ -118,6 +173,39 @@ describe("schedule", () => {
     );
     expect(substituted.length).toBeGreaterThan(0);
     expect(substituted[0].substituteForActivityId).toBe("a1");
+  });
+
+  it("flexes a monthly consultation to the specialist's next available day", () => {
+    const consult: Activity = {
+      ...baseActivity,
+      id: "c",
+      type: "consultation",
+      name: "Specialist",
+      facilitatorId: "spec-1",
+      equipmentId: null,
+      durationMinutes: 60,
+      frequency: { times: 1, per: "month" },
+    };
+    // Occurrence expands to 2026-06-01 (Mon); the specialist only sits Wed.
+    const specAvail: Availability = {
+      resources: [
+        {
+          id: "spec-1",
+          type: "specialist",
+          name: "S",
+          windows: [{ date: "2026-06-03", start: "09:00", end: "12:00" }],
+        },
+      ],
+      travel: [],
+    };
+    const out = schedule(
+      { memberId: "m", memberName: "M", activities: [consult] },
+      specAvail,
+      { start: "2026-06-01", end: "2026-06-07" }
+    );
+    expect(out.events).toHaveLength(1);
+    expect(out.events[0].status).toBe("scheduled");
+    expect(out.events[0].date).toBe("2026-06-03");
   });
 
   it("higher priority gets contested slot first", () => {
