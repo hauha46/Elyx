@@ -175,6 +175,39 @@ describe("schedule", () => {
     expect(substituted[0].substituteForActivityId).toBe("a1");
   });
 
+  it("flexes a monthly consultation to the specialist's next available day", () => {
+    const consult: Activity = {
+      ...baseActivity,
+      id: "c",
+      type: "consultation",
+      name: "Specialist",
+      facilitatorId: "spec-1",
+      equipmentId: null,
+      durationMinutes: 60,
+      frequency: { times: 1, per: "month" },
+    };
+    // Occurrence expands to 2026-06-01 (Mon); the specialist only sits Wed.
+    const specAvail: Availability = {
+      resources: [
+        {
+          id: "spec-1",
+          type: "specialist",
+          name: "S",
+          windows: [{ date: "2026-06-03", start: "09:00", end: "12:00" }],
+        },
+      ],
+      travel: [],
+    };
+    const out = schedule(
+      { memberId: "m", memberName: "M", activities: [consult] },
+      specAvail,
+      { start: "2026-06-01", end: "2026-06-07" }
+    );
+    expect(out.events).toHaveLength(1);
+    expect(out.events[0].status).toBe("scheduled");
+    expect(out.events[0].date).toBe("2026-06-03");
+  });
+
   it("higher priority gets contested slot first", () => {
     const lowPri: Activity = {
       ...baseActivity,

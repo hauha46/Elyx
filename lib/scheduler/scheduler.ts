@@ -6,11 +6,19 @@ import type {
   Activity,
   Travel,
 } from "./types";
+import { addDays, format, parseISO } from "date-fns";
 import { expandFrequencyWithDayParts, type DateRange } from "./instances";
 import { findSlot, type ConsumedSlot } from "./slot-finder";
 
 function isInTravel(date: string, travel: Travel[]): Travel | null {
   return travel.find((t) => date >= t.start && date <= t.end) ?? null;
+}
+
+// How far forward an unplaceable occurrence may slide to find availability —
+// the real-world "next available appointment". Daily items don't move days;
+// a weekly slot can shift a few days, a monthly one up to a few weeks.
+function flexDays(per: "day" | "week" | "month"): number {
+  return per === "month" ? 20 : per === "week" ? 3 : 0;
 }
 
 function tryPlaceActivity(
@@ -110,6 +118,30 @@ export function schedule(
       }
       if (subbed) {
         events.push(subbed);
+        continue;
+      }
+
+      // Neither the primary nor a backup fit today — slide forward to the next
+      // day the activity can actually happen (e.g. the specialist's clinic day).
+      let flexed: ScheduledEvent | null = null;
+      const maxFlex = flexDays(activity.frequency.per);
+      for (let k = 1; k <= maxFlex; k++) {
+        const altDate = format(addDays(parseISO(date), k), "yyyy-MM-dd");
+        if (altDate > range.end) break;
+        const placedAlt = tryPlaceActivity(
+          target,
+          altDate,
+          availability.resources,
+          consumed,
+          availability.travel
+        );
+        if (placedAlt) {
+          flexed = placedAlt;
+          break;
+        }
+      }
+      if (flexed) {
+        events.push(flexed);
         continue;
       }
 
